@@ -12,7 +12,6 @@ import {
   resumeTask,
   saveConfig,
   setConcurrency,
-  type Config,
   type Task,
 } from './api'
 import './App.css'
@@ -26,13 +25,12 @@ function App() {
   const [history, setHistory] = useState<Record<string, unknown>[]>([])
   const [concurrency, setLocalConcurrency] = useState(2)
   const [filenameTemplate, setFilenameTemplate] = useState('%(title)s.%(ext)s')
-  const [cookieMode, setCookieMode] = useState<Config['cookies']['mode']>('off')
-  const [cookieBrowser, setCookieBrowser] = useState<Config['cookies']['browser']>('chrome')
   const [cookieFile, setCookieFile] = useState('')
   const [probeLink, setProbeLink] = useState('')
   const [probeResult, setProbeResult] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [settingsClosing, setSettingsClosing] = useState(false)
+  const [presetOpen, setPresetOpen] = useState(false)
   const [message, setMessage] = useState('正在连接本地后端...')
 
   const runningCount = tasks.filter((task) => task.status === '下载中').length
@@ -58,8 +56,6 @@ function App() {
         setOutDir(config.defaultOutDir)
         setLocalConcurrency(config.concurrency)
         setFilenameTemplate(config.filenameTemplate)
-        setCookieMode(config.cookies.mode)
-        setCookieBrowser(config.cookies.browser)
         setCookieFile(config.cookies.cookieFile)
         setMessage('后端已连接,可以开始下载。')
       })
@@ -98,8 +94,8 @@ function App() {
       filenameTemplate,
       concurrency,
       cookies: {
-        mode: cookieMode,
-        browser: cookieBrowser,
+        mode: cookieFile ? 'file' : 'off',
+        browser: 'edge',
         cookieFile,
       },
     })
@@ -107,8 +103,6 @@ function App() {
     setOutDir(config.defaultOutDir)
     setLocalConcurrency(config.concurrency)
     setFilenameTemplate(config.filenameTemplate)
-    setCookieMode(config.cookies.mode)
-    setCookieBrowser(config.cookies.browser)
     setCookieFile(config.cookies.cookieFile)
     setMessage('设置已保存,后续任务会使用新配置。')
     closeSettings()
@@ -156,13 +150,6 @@ function App() {
     await refresh()
   }
 
-  const cookieHelp =
-    cookieMode === 'browser'
-      ? `将读取 ${cookieBrowser} 的登录态。使用前请先在该浏览器登录目标网站,并关闭正在播放/下载占用的页面。`
-      : cookieMode === 'file'
-        ? '适合高级用户: 从浏览器导出 Netscape cookies.txt 后,把文件路径填到下方。'
-        : '默认不使用登录态。公开内容可直接下载,会员/私密/年龄限制内容可能失败或没有高清。'
-
   return (
     <main className="app-shell">
       <section className="topbar" aria-labelledby="page-title">
@@ -204,11 +191,36 @@ function App() {
           <div className="download-options-row">
             <label>
               下载格式
-              <select value={preset} onChange={(event) => setPreset(event.target.value)}>
-                {presets.map((preset) => (
-                  <option key={preset}>{preset}</option>
-                ))}
-              </select>
+              <div className="custom-select">
+                <button
+                  aria-expanded={presetOpen}
+                  className="custom-select-trigger"
+                  type="button"
+                  onClick={() => setPresetOpen((value) => !value)}
+                >
+                  <span>{preset || '请选择格式'}</span>
+                  <i aria-hidden="true" />
+                </button>
+                {presetOpen && (
+                  <div className="custom-select-menu" role="listbox">
+                    {presets.map((item) => (
+                      <button
+                        className={item === preset ? 'custom-option active' : 'custom-option'}
+                        key={item}
+                        role="option"
+                        type="button"
+                        aria-selected={item === preset}
+                        onClick={() => {
+                          setPreset(item)
+                          setPresetOpen(false)
+                        }}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </label>
             <label>
               保存路径
@@ -276,7 +288,7 @@ function App() {
           <div className="section-head">
             <div>
               <h2>历史记录</h2>
-              <p>完成或失败后自动保存在本机。</p>
+              <p>完成后自动保存。</p>
             </div>
             <button className="clear-history-button" type="button" onClick={() => clearHistory().then(refresh)}>
               清空历史
@@ -336,69 +348,23 @@ function App() {
                     placeholder="%(title)s.%(ext)s"
                   />
                 </label>
-                <div className="wide-field">
-                  <span className="field-title">Cookies 登录方式</span>
-                  <div className="cookie-mode-grid" role="group" aria-label="Cookies 登录方式">
-                    <button
-                      className={cookieMode === 'off' ? 'choice-card active' : 'choice-card'}
-                      type="button"
-                      onClick={() => setCookieMode('off')}
-                    >
-                      <strong>不使用</strong>
-                      <span>公开内容直接下载</span>
-                    </button>
-                    <button
-                      className={cookieMode === 'browser' ? 'choice-card active' : 'choice-card'}
-                      type="button"
-                      onClick={() => setCookieMode('browser')}
-                    >
-                      <strong>读取浏览器</strong>
-                      <span>推荐,不保存账号密码</span>
-                    </button>
-                    <button
-                      className={cookieMode === 'file' ? 'choice-card active' : 'choice-card'}
-                      type="button"
-                      onClick={() => setCookieMode('file')}
-                    >
-                      <strong>cookies.txt</strong>
-                      <span>手动导入文件</span>
-                    </button>
-                  </div>
-                </div>
-                <div className={cookieMode === 'browser' ? '' : 'is-muted'}>
-                  <span className="field-title">浏览器</span>
-                  <div className="browser-choice-grid" role="group" aria-label="浏览器选择">
-                    {(['chrome', 'edge', 'firefox'] as const).map((browser) => (
-                      <button
-                        className={cookieBrowser === browser ? 'browser-pill active' : 'browser-pill'}
-                        disabled={cookieMode !== 'browser'}
-                        key={browser}
-                        type="button"
-                        onClick={() => setCookieBrowser(browser)}
-                      >
-                        {browser === 'chrome' ? 'Chrome' : browser === 'edge' ? 'Edge' : 'Firefox'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <label className="wide-field">
-                  cookies.txt 路径
+                  cookies.txt 路径(高级备用)
                   <input
                     value={cookieFile}
-                    disabled={cookieMode !== 'file'}
                     onChange={(event) => setCookieFile(event.target.value)}
                     placeholder="C:\\path\\to\\cookies.txt"
                   />
                 </label>
               </div>
               <div className="cookie-help-card">
-                <strong>如何使用 Cookies 下载高清/私密内容</strong>
+                <strong>Cookies 备用方案</strong>
                 <ol>
-                  <li>先在 Chrome / Edge / Firefox 登录目标网站。</li>
-                  <li>选择“读取浏览器”,并选中对应浏览器。</li>
-                  <li>保存设置后再加入下载任务。</li>
+                  <li>在浏览器登录目标网站。</li>
+                  <li>导出 Netscape 格式 cookies.txt。</li>
+                  <li>填写 cookies.txt 路径并保存。</li>
                 </ol>
-                <p>{cookieHelp}</p>
+                <p>默认不使用登录态。cookies.txt 只作为高级备用方案。</p>
                 <div className="probe-row">
                   <input
                     value={probeLink}

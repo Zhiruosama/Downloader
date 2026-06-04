@@ -28,6 +28,8 @@ export type Config = {
   }
 }
 
+export type SaveConfig = Config
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -43,7 +45,7 @@ export function getConfig() {
   return request<Config>('/api/config')
 }
 
-export function saveConfig(config: Config) {
+export function saveConfig(config: SaveConfig) {
   return request<Config>('/api/config', {
     method: 'PUT',
     body: JSON.stringify(config),

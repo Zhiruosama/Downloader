@@ -28,7 +28,7 @@ def default_download_dir() -> str:
 @dataclass
 class CookiesConfig:
     mode: CookieMode = "off"
-    browser: BrowserName = "chrome"
+    browser: BrowserName = "edge"
     cookieFile: str = ""
 
 

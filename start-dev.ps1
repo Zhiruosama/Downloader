@@ -14,6 +14,14 @@ if (-not (Test-Path (Join-Path $Desktop "node_modules"))) {
 
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 
+$ExistingBackend = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if ($ExistingBackend) {
+    Write-Host "Port 8765 is already in use. Stopping old backend process..." -ForegroundColor Yellow
+    Stop-Process -Id $ExistingBackend.OwningProcess -Force
+    Start-Sleep -Seconds 1
+}
+
 Write-Host "Starting Python backend at http://127.0.0.1:8765 ..." -ForegroundColor Green
 $Backend = Start-Process powershell -PassThru -WorkingDirectory $Root -ArgumentList @(
     "-NoExit",

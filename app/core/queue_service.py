@@ -273,3 +273,20 @@ class QueueService:
         data["display_title"] = task.display_title
         data["spec_text"] = task.spec_text
         return data
+
+    def _friendly_error(self, message: str) -> str:
+        lower = message.lower()
+        if "could not copy" in lower and "cookie database" in lower:
+            return (
+                "浏览器 cookies 数据库正在被占用或无法复制。请先完全关闭对应浏览器"
+                "(包括后台进程),再点击检测；更推荐导出 cookies.txt 后在设置中使用。"
+            )
+        if "cookie database" in lower:
+            return "读取浏览器 cookies 失败。请关闭浏览器后重试,或改用 cookies.txt。"
+        if "cookies" in lower or "login" in lower or "sign in" in lower:
+            return "未读取到有效登录态。请先在浏览器登录目标网站,再点击检测。"
+        if "private" in lower or "permission" in lower:
+            return "当前账号没有访问权限,或内容需要会员/私密权限。"
+        if "unsupported url" in lower:
+            return "链接暂不支持或格式不正确。"
+        return message[:300]
