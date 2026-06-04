@@ -84,6 +84,8 @@ def _build_opts(
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": False,
+        "continuedl": True,
+        "nopart": False,
         "retries": 5,
         "fragment_retries": 5,
     }

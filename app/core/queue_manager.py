@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QThread, Signal
 
 from app.core import downloader
+from app.core.history import HistoryStore
 from app.models.task import DownloadTask, TaskStatus
 
 
@@ -50,9 +51,11 @@ class QueueManager(QObject):
     def __init__(self, max_concurrent: int = 2):
         super().__init__()
         self.max_concurrent = max(1, max_concurrent)
+        self.history = HistoryStore()
         self.tasks: dict[int, DownloadTask] = {}
         self._workers: dict[int, _Worker] = {}
         self._pending: list[int] = []
+        self._resume_after_pause: set[int] = set()
 
     # 外部接口
     def add(self, task: DownloadTask) -> None:
@@ -72,6 +75,35 @@ class QueueManager(QObject):
         task.status = TaskStatus.PENDING
         task.error = ""
         task.progress = 0
+        self._pending.append(task_id)
+        self.task_updated.emit(task)
+        self._pump()
+
+    def pause(self, task_id: int) -> None:
+        task = self.tasks.get(task_id)
+        if not task:
+            return
+        if task_id in self._pending:
+            self._pending.remove(task_id)
+            task.status = TaskStatus.PAUSED
+            self.task_updated.emit(task)
+            return
+        worker = self._workers.get(task_id)
+        if worker:
+            task.status = TaskStatus.PAUSED
+            task.speed = 0.0
+            self.task_updated.emit(task)
+            worker.cancel()
+
+    def resume(self, task_id: int) -> None:
+        task = self.tasks.get(task_id)
+        if not task or task.status != TaskStatus.PAUSED:
+            return
+        if task_id in self._workers:
+            self._resume_after_pause.add(task_id)
+            return
+        task.status = TaskStatus.PENDING
+        task.error = ""
         self._pending.append(task_id)
         self.task_updated.emit(task)
         self._pump()
@@ -129,6 +161,8 @@ class QueueManager(QObject):
         task = self.tasks.get(task_id)
         if not task:
             return
+        if task.status == TaskStatus.PAUSED:
+            return
         info = d.get("info_dict") or {}
         if info.get("title"):
             task.title = info["title"]
@@ -147,23 +181,37 @@ class QueueManager(QObject):
         self.task_updated.emit(task)
 
     def _on_done(self, task_id: int) -> None:
+        from time import time
+
         task = self.tasks.get(task_id)
         if task:
             task.status = TaskStatus.DONE
             task.progress = 100
             task.speed = 0.0
             task.eta = 0
+            task.finished_at = time()
+            self.history.add(task)
             self.task_updated.emit(task)
 
     def _on_failed(self, task_id: int, msg: str) -> None:
+        from time import time
+
         task = self.tasks.get(task_id)
         if task:
             task.status = TaskStatus.FAILED
             task.error = msg
             task.speed = 0.0
+            task.finished_at = time()
+            self.history.add(task)
             self.task_updated.emit(task)
 
     def _discard(self, task_id: int) -> None:
         """worker 线程结束后释放并发名额, 调度下一个。"""
         self._workers.pop(task_id, None)
+        task = self.tasks.get(task_id)
+        if task and task.status == TaskStatus.PAUSED and task_id in self._resume_after_pause:
+            self._resume_after_pause.remove(task_id)
+            task.status = TaskStatus.PENDING
+            self._pending.append(task_id)
+            self.task_updated.emit(task)
         self._pump()

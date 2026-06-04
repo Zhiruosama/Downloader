@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -40,7 +41,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("多平台下载器")
-        self.resize(820, 460)
+        self.resize(920, 620)
 
         self.queue = QueueManager(max_concurrent=2)
         self.queue.task_added.connect(self._on_task_added)
@@ -50,6 +51,7 @@ class MainWindow(QWidget):
         self._row_of: dict[int, int] = {}   # task_id -> 表格行
 
         self._build_ui()
+        self._load_history()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -98,16 +100,38 @@ class MainWindow(QWidget):
         self.conc_spin.valueChanged.connect(self.queue.set_concurrency)
         ctrl_row.addWidget(self.conc_spin)
         ctrl_row.addStretch(1)
+        pause_btn = QPushButton("暂停/继续")
+        pause_btn.clicked.connect(self._on_pause_resume)
         retry_btn = QPushButton("重试失败")
         retry_btn.clicked.connect(self._on_retry)
         remove_btn = QPushButton("移除所选")
         remove_btn.clicked.connect(self._on_remove)
         clear_btn = QPushButton("清除已完成")
         clear_btn.clicked.connect(self.queue.clear_finished)
+        ctrl_row.addWidget(pause_btn)
         ctrl_row.addWidget(retry_btn)
         ctrl_row.addWidget(remove_btn)
         ctrl_row.addWidget(clear_btn)
         root.addLayout(ctrl_row)
+
+        # 历史记录
+        root.addWidget(QLabel("历史记录:"))
+        self.history_table = QTableWidget(0, 5)
+        self.history_table.setHorizontalHeaderLabels(["时间", "标题", "格式", "状态", "保存目录"])
+        self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hh2 = self.history_table.horizontalHeader()
+        hh2.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hh2.setSectionResizeMode(1, QHeaderView.Stretch)
+        for c in (2, 3, 4):
+            hh2.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+        root.addWidget(self.history_table, 1)
+
+        hist_row = QHBoxLayout()
+        hist_row.addStretch(1)
+        clear_hist_btn = QPushButton("清空历史")
+        clear_hist_btn.clicked.connect(self._on_clear_history)
+        hist_row.addWidget(clear_hist_btn)
+        root.addLayout(hist_row)
 
     def _default_dir(self) -> str:
         d = os.path.join(os.path.expanduser("~"), "Downloads")
@@ -140,6 +164,18 @@ class MainWindow(QWidget):
         tid = self._selected_task_id()
         if tid is not None:
             self.queue.retry(tid)
+
+    def _on_pause_resume(self) -> None:
+        tid = self._selected_task_id()
+        if tid is None:
+            return
+        task = self.queue.tasks.get(tid)
+        if not task:
+            return
+        if task.status == TaskStatus.PAUSED:
+            self.queue.resume(tid)
+        elif task.status in (TaskStatus.PENDING, TaskStatus.DOWNLOADING):
+            self.queue.pause(tid)
 
     def _on_remove(self) -> None:
         tid = self._selected_task_id()
@@ -184,6 +220,8 @@ class MainWindow(QWidget):
 
         speed_text = f"{_fmt_size(task.speed)}/s" if task.speed else ""
         self.table.item(row, COL_SPEED).setText(speed_text)
+        if task.status in (TaskStatus.DONE, TaskStatus.FAILED):
+            self._load_history()
 
     def _on_task_removed(self, task_id: int) -> None:
         row = self._row_of.pop(task_id, None)
@@ -199,6 +237,33 @@ class MainWindow(QWidget):
             item = self.table.item(row, COL_TITLE)
             if item:
                 self._row_of[item.data(Qt.UserRole)] = row
+
+    def _load_history(self) -> None:
+        records = self.queue.history.load()
+        self.history_table.setRowCount(0)
+        for item in records:
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+            finished = item.get("finished_at") or item.get("created_at") or 0
+            when = (
+                time.strftime("%Y-%m-%d %H:%M", time.localtime(float(finished)))
+                if finished
+                else ""
+            )
+            title = item.get("title") or item.get("url") or ""
+            values = [
+                when,
+                title,
+                item.get("preset") or "",
+                item.get("status") or "",
+                item.get("out_dir") or "",
+            ]
+            for col, value in enumerate(values):
+                self.history_table.setItem(row, col, QTableWidgetItem(str(value)))
+
+    def _on_clear_history(self) -> None:
+        self.queue.history.clear()
+        self._load_history()
 
     def closeEvent(self, event) -> None:
         if self.queue.has_running():
