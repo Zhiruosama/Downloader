@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# 下载产物 / 临时文件
+*.part
+*.ytdl
+*.mp4
+*.mkv
+*.webm
+*.m4a
+*.mp3
+
+# 系统
+.DS_Store
+Thumbs.db
