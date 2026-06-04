@@ -47,6 +47,7 @@ button {
   border-radius: 14px;
   color: var(--text);
   background: var(--surface-soft);
+  font-weight: 800;
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -163,9 +164,9 @@ p {
 .topbar-status button {
   min-height: 36px;
   padding: 0 16px;
-  border-radius: 14px;
+  border-radius: 999px;
   color: #fff;
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
   font-weight: 800;
   box-shadow: 0 10px 20px rgb(37 99 235 / 18%);
 }
@@ -201,9 +202,14 @@ p {
 
 .ghost-button,
 .secondary-button {
+  min-height: 44px;
   padding: 0 18px;
   border: 1px solid var(--line);
-  background: #fff;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 10px 20px rgb(15 23 42 / 6%);
+  color: #334155;
+  white-space: nowrap;
 }
 
 .field-label {
@@ -221,6 +227,32 @@ select {
   border-radius: 16px;
   background: #fff;
   color: var(--text);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: rgb(37 99 235 / 34%);
+  box-shadow: 0 8px 22px rgb(15 23 42 / 5%);
+}
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #475569 50%),
+    linear-gradient(135deg, #475569 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
 }
 
 textarea {
@@ -237,14 +269,15 @@ select {
   padding: 0 14px;
 }
 
-.control-row {
+.download-options-row {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(260px, 1fr) 110px 140px;
+  align-items: end;
   gap: 14px;
   margin-top: 16px;
 }
 
-.control-row label {
+.download-options-row label {
   color: #334155;
   font-weight: 700;
 }
@@ -260,15 +293,21 @@ select {
 .primary-button {
   min-width: 150px;
   padding: 0 22px;
+  border-radius: 16px;
   color: #fff;
   background: linear-gradient(135deg, var(--primary), #4f46e5);
   box-shadow: 0 14px 28px rgb(37 99 235 / 24%);
   font-weight: 800;
 }
 
+.primary-button:hover,
+.topbar-status button:hover,
+.probe-row button:hover {
+  box-shadow: 0 16px 34px rgb(37 99 235 / 28%);
+}
+
 .concurrency-control {
   display: grid;
-  width: 120px;
   gap: 8px;
   color: #334155;
   font-weight: 700;
@@ -276,6 +315,11 @@ select {
 
 .concurrency-control input {
   margin-top: 0;
+}
+
+.add-button {
+  width: 100%;
+  height: 48px;
 }
 
 .inline-message,
@@ -323,16 +367,26 @@ select {
   justify-content: flex-end;
   background: rgb(15 23 42 / 24%);
   backdrop-filter: blur(8px);
+  animation: overlay-fade-in 180ms ease-out;
+}
+
+.settings-overlay.closing {
+  animation: overlay-fade-out 180ms ease-in forwards;
 }
 
 .settings-drawer {
+  display: flex;
+  flex-direction: column;
   width: min(520px, calc(100vw - 28px));
   height: 100vh;
-  overflow-y: auto;
   border-left: 1px solid var(--line);
   background: rgb(255 255 255 / 96%);
   box-shadow: -24px 0 60px rgb(15 23 42 / 18%);
-  padding: 24px;
+  animation: drawer-slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settings-drawer.closing {
+  animation: drawer-slide-out 180ms ease-in forwards;
 }
 
 .drawer-head {
@@ -340,7 +394,8 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid var(--line);
 }
 
 .drawer-head h2 {
@@ -358,10 +413,18 @@ select {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  background: #fff;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 18px rgb(15 23 42 / 6%);
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .settings-grid {
+  padding: 22px 24px 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
@@ -442,7 +505,7 @@ select {
 }
 
 .cookie-help-card {
-  margin-top: 16px;
+  margin: 16px 24px 24px;
   border: 1px solid #bfdbfe;
   border-radius: 18px;
   padding: 16px 18px;
@@ -479,10 +542,13 @@ select {
 }
 
 .probe-row button {
+  min-height: 48px;
   padding: 0 16px;
+  border-radius: 16px;
   color: #fff;
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .probe-result {
@@ -490,16 +556,61 @@ select {
 }
 
 .drawer-actions {
-  position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin: 20px -24px -24px;
   padding: 16px 24px 20px;
   border-top: 1px solid var(--line);
   background: rgb(255 255 255 / 92%);
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-slide-in {
+  from {
+    opacity: 0.92;
+    transform: translateX(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes overlay-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes drawer-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0.92;
+    transform: translateX(32px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-overlay,
+  .settings-drawer {
+    animation: none;
+  }
 }
 
 .button-group {
@@ -510,9 +621,25 @@ select {
 
 .button-group button,
 .history-panel button {
+  min-height: 40px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  background: #fff;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 18px rgb(15 23 42 / 5%);
+  color: #334155;
+  white-space: nowrap;
+}
+
+.clear-history-button {
+  min-width: 104px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .task-list,
@@ -593,7 +720,7 @@ select {
 
   .topbar,
   .content-grid,
-  .control-row,
+  .download-options-row,
   .task-item,
   .settings-grid {
     grid-template-columns: 1fr;

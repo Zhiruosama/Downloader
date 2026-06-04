@@ -32,6 +32,7 @@ function App() {
   const [probeLink, setProbeLink] = useState('')
   const [probeResult, setProbeResult] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsClosing, setSettingsClosing] = useState(false)
   const [message, setMessage] = useState('正在连接本地后端...')
 
   const runningCount = tasks.filter((task) => task.status === '下载中').length
@@ -110,7 +111,20 @@ function App() {
     setCookieBrowser(config.cookies.browser)
     setCookieFile(config.cookies.cookieFile)
     setMessage('设置已保存,后续任务会使用新配置。')
-    setShowSettings(false)
+    closeSettings()
+  }
+
+  function openSettings() {
+    setSettingsClosing(false)
+    setShowSettings(true)
+  }
+
+  function closeSettings() {
+    setSettingsClosing(true)
+    window.setTimeout(() => {
+      setShowSettings(false)
+      setSettingsClosing(false)
+    }, 180)
   }
 
   async function handleProbe() {
@@ -158,7 +172,7 @@ function App() {
           <span><strong>{runningCount}</strong> 运行中</span>
           <span><strong>{pendingCount}</strong> 等待中</span>
           <span><strong>{concurrency}</strong> 并发</span>
-          <button type="button" onClick={() => setShowSettings((value) => !value)}>
+          <button type="button" onClick={showSettings ? closeSettings : openSettings}>
             {showSettings ? '收起设置' : '设置'}
           </button>
         </div>
@@ -187,7 +201,7 @@ function App() {
             onChange={(event) => setLinks(event.currentTarget.value)}
           />
 
-          <div className="control-row">
+          <div className="download-options-row">
             <label>
               下载格式
               <select value={preset} onChange={(event) => setPreset(event.target.value)}>
@@ -200,12 +214,6 @@ function App() {
               保存路径
               <input value={outDir} onChange={(event) => setOutDir(event.target.value)} />
             </label>
-          </div>
-
-          <div className="actions">
-            <button className="primary-button" type="button" onClick={handleAdd}>
-              加入队列
-            </button>
             <label className="concurrency-control">
               并发数
               <input
@@ -216,6 +224,9 @@ function App() {
                 onChange={(event) => handleConcurrency(Number(event.target.value))}
               />
             </label>
+            <button className="primary-button add-button" type="button" onClick={handleAdd}>
+              加入队列
+            </button>
           </div>
           <p className="inline-message">{message}</p>
           <div className="platform-strip">
@@ -267,7 +278,9 @@ function App() {
               <h2>历史记录</h2>
               <p>完成或失败后自动保存在本机。</p>
             </div>
-            <button type="button" onClick={() => clearHistory().then(refresh)}>清空历史</button>
+            <button className="clear-history-button" type="button" onClick={() => clearHistory().then(refresh)}>
+              清空历史
+            </button>
           </div>
 
           <div className="history-list" aria-label="历史记录列表">
@@ -285,11 +298,15 @@ function App() {
         </div>
       </section>
       {showSettings && (
-        <div className="settings-overlay" role="presentation" onClick={() => setShowSettings(false)}>
+        <div
+          className={settingsClosing ? 'settings-overlay closing' : 'settings-overlay'}
+          role="presentation"
+          onClick={closeSettings}
+        >
           <aside
             aria-label="下载设置"
             aria-modal="true"
-            className="settings-drawer"
+            className={settingsClosing ? 'settings-drawer closing' : 'settings-drawer'}
             role="dialog"
             onClick={(event) => event.stopPropagation()}
           >
@@ -298,101 +315,103 @@ function App() {
                 <h2>下载设置</h2>
                 <p>默认值、命名模板和 cookies 登录方式。</p>
               </div>
-              <button type="button" onClick={() => setShowSettings(false)}>关闭</button>
+              <button type="button" onClick={closeSettings}>关闭</button>
             </div>
 
-            <div className="settings-grid">
-              <label>
-                默认画质
-                <select value={preset} onChange={(event) => setPreset(event.target.value)}>
-                  {presets.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                命名模板
-                <input
-                  value={filenameTemplate}
-                  onChange={(event) => setFilenameTemplate(event.target.value)}
-                  placeholder="%(title)s.%(ext)s"
-                />
-              </label>
-              <div className="wide-field">
-                <span className="field-title">Cookies 登录方式</span>
-                <div className="cookie-mode-grid" role="group" aria-label="Cookies 登录方式">
-                  <button
-                    className={cookieMode === 'off' ? 'choice-card active' : 'choice-card'}
-                    type="button"
-                    onClick={() => setCookieMode('off')}
-                  >
-                    <strong>不使用</strong>
-                    <span>公开内容直接下载</span>
-                  </button>
-                  <button
-                    className={cookieMode === 'browser' ? 'choice-card active' : 'choice-card'}
-                    type="button"
-                    onClick={() => setCookieMode('browser')}
-                  >
-                    <strong>读取浏览器</strong>
-                    <span>推荐,不保存账号密码</span>
-                  </button>
-                  <button
-                    className={cookieMode === 'file' ? 'choice-card active' : 'choice-card'}
-                    type="button"
-                    onClick={() => setCookieMode('file')}
-                  >
-                    <strong>cookies.txt</strong>
-                    <span>手动导入文件</span>
-                  </button>
-                </div>
-              </div>
-              <div className={cookieMode === 'browser' ? '' : 'is-muted'}>
-                <span className="field-title">浏览器</span>
-                <div className="browser-choice-grid" role="group" aria-label="浏览器选择">
-                  {(['chrome', 'edge', 'firefox'] as const).map((browser) => (
+            <div className="drawer-body">
+              <div className="settings-grid">
+                <label>
+                  默认画质
+                  <select value={preset} onChange={(event) => setPreset(event.target.value)}>
+                    {presets.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  命名模板
+                  <input
+                    value={filenameTemplate}
+                    onChange={(event) => setFilenameTemplate(event.target.value)}
+                    placeholder="%(title)s.%(ext)s"
+                  />
+                </label>
+                <div className="wide-field">
+                  <span className="field-title">Cookies 登录方式</span>
+                  <div className="cookie-mode-grid" role="group" aria-label="Cookies 登录方式">
                     <button
-                      className={cookieBrowser === browser ? 'browser-pill active' : 'browser-pill'}
-                      disabled={cookieMode !== 'browser'}
-                      key={browser}
+                      className={cookieMode === 'off' ? 'choice-card active' : 'choice-card'}
                       type="button"
-                      onClick={() => setCookieBrowser(browser)}
+                      onClick={() => setCookieMode('off')}
                     >
-                      {browser === 'chrome' ? 'Chrome' : browser === 'edge' ? 'Edge' : 'Firefox'}
+                      <strong>不使用</strong>
+                      <span>公开内容直接下载</span>
                     </button>
-                  ))}
+                    <button
+                      className={cookieMode === 'browser' ? 'choice-card active' : 'choice-card'}
+                      type="button"
+                      onClick={() => setCookieMode('browser')}
+                    >
+                      <strong>读取浏览器</strong>
+                      <span>推荐,不保存账号密码</span>
+                    </button>
+                    <button
+                      className={cookieMode === 'file' ? 'choice-card active' : 'choice-card'}
+                      type="button"
+                      onClick={() => setCookieMode('file')}
+                    >
+                      <strong>cookies.txt</strong>
+                      <span>手动导入文件</span>
+                    </button>
+                  </div>
                 </div>
+                <div className={cookieMode === 'browser' ? '' : 'is-muted'}>
+                  <span className="field-title">浏览器</span>
+                  <div className="browser-choice-grid" role="group" aria-label="浏览器选择">
+                    {(['chrome', 'edge', 'firefox'] as const).map((browser) => (
+                      <button
+                        className={cookieBrowser === browser ? 'browser-pill active' : 'browser-pill'}
+                        disabled={cookieMode !== 'browser'}
+                        key={browser}
+                        type="button"
+                        onClick={() => setCookieBrowser(browser)}
+                      >
+                        {browser === 'chrome' ? 'Chrome' : browser === 'edge' ? 'Edge' : 'Firefox'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="wide-field">
+                  cookies.txt 路径
+                  <input
+                    value={cookieFile}
+                    disabled={cookieMode !== 'file'}
+                    onChange={(event) => setCookieFile(event.target.value)}
+                    placeholder="C:\\path\\to\\cookies.txt"
+                  />
+                </label>
               </div>
-              <label className="wide-field">
-                cookies.txt 路径
-                <input
-                  value={cookieFile}
-                  disabled={cookieMode !== 'file'}
-                  onChange={(event) => setCookieFile(event.target.value)}
-                  placeholder="C:\\path\\to\\cookies.txt"
-                />
-              </label>
-            </div>
-            <div className="cookie-help-card">
-              <strong>如何使用 Cookies 下载高清/私密内容</strong>
-              <ol>
-                <li>先在 Chrome / Edge / Firefox 登录目标网站。</li>
-                <li>选择“读取浏览器”,并选中对应浏览器。</li>
-                <li>保存设置后再加入下载任务。</li>
-              </ol>
-              <p>{cookieHelp}</p>
-              <div className="probe-row">
-                <input
-                  value={probeLink}
-                  onChange={(event) => setProbeLink(event.target.value)}
-                  placeholder="粘贴一个链接测试 cookies 是否有效"
-                />
-                <button type="button" onClick={handleProbe}>测试 cookies</button>
+              <div className="cookie-help-card">
+                <strong>如何使用 Cookies 下载高清/私密内容</strong>
+                <ol>
+                  <li>先在 Chrome / Edge / Firefox 登录目标网站。</li>
+                  <li>选择“读取浏览器”,并选中对应浏览器。</li>
+                  <li>保存设置后再加入下载任务。</li>
+                </ol>
+                <p>{cookieHelp}</p>
+                <div className="probe-row">
+                  <input
+                    value={probeLink}
+                    onChange={(event) => setProbeLink(event.target.value)}
+                    placeholder="粘贴一个链接测试 cookies 是否有效"
+                  />
+                  <button type="button" onClick={handleProbe}>测试 cookies</button>
+                </div>
+                {probeResult && <p className="probe-result">{probeResult}</p>}
               </div>
-              {probeResult && <p className="probe-result">{probeResult}</p>}
             </div>
             <div className="drawer-actions">
-              <button className="secondary-button" type="button" onClick={() => setShowSettings(false)}>
+              <button className="secondary-button" type="button" onClick={closeSettings}>
                 取消
               </button>
               <button className="primary-button" type="button" onClick={handleSaveSettings}>
