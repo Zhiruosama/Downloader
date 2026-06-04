@@ -1,15 +1,8 @@
-import sys
-
-from PySide6.QtWidgets import QApplication
-
-from app.ui.main_window import MainWindow
+import uvicorn
 
 
 def main() -> None:
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    uvicorn.run("app.server:app", host="127.0.0.1", port=8765)
 
 
 if __name__ == "__main__":
