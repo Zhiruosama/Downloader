@@ -31,6 +31,7 @@ function App() {
   const [cookieFile, setCookieFile] = useState('')
   const [probeLink, setProbeLink] = useState('')
   const [probeResult, setProbeResult] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
   const [message, setMessage] = useState('正在连接本地后端...')
 
   const runningCount = tasks.filter((task) => task.status === '下载中').length
@@ -109,6 +110,7 @@ function App() {
     setCookieBrowser(config.cookies.browser)
     setCookieFile(config.cookies.cookieFile)
     setMessage('设置已保存,后续任务会使用新配置。')
+    setShowSettings(false)
   }
 
   async function handleProbe() {
@@ -149,36 +151,25 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="hero-panel" aria-labelledby="page-title">
-        <div className="hero-copy">
-          <span className="eyebrow">Personal media downloader</span>
-          <h1 id="page-title">把链接丢进来,剩下交给队列。</h1>
-          <p>
-            面向日常使用的多平台下载器。批量粘贴、自动识别、清晰度选择、下载进度和历史记录集中在一个界面里。
-          </p>
-        </div>
-        <div className="status-card" aria-label="当前下载状态">
-          <div>
-            <span className="metric">{runningCount}</span>
-            <span className="label">运行中</span>
-          </div>
-          <div>
-            <span className="metric">{pendingCount}</span>
-            <span className="label">等待中</span>
-          </div>
-          <div>
-            <span className="metric">{concurrency}</span>
-            <span className="label">并发数</span>
-          </div>
+      <section className="topbar" aria-labelledby="page-title">
+        <div className="topbar-spacer" aria-hidden="true" />
+        <h1 className="brand-logo" id="page-title">Downloader</h1>
+        <div className="topbar-status" aria-label="当前下载状态">
+          <span><strong>{runningCount}</strong> 运行中</span>
+          <span><strong>{pendingCount}</strong> 等待中</span>
+          <span><strong>{concurrency}</strong> 并发</span>
+          <button type="button" onClick={() => setShowSettings((value) => !value)}>
+            {showSettings ? '收起设置' : '设置'}
+          </button>
         </div>
       </section>
 
-      <section className="workspace-grid">
+      <section className="download-card">
         <form className="input-card" aria-label="添加下载任务">
           <div className="section-head">
             <div>
-              <h2>链接下载</h2>
-              <p>每行一个链接,最多一次加入30条。</p>
+              <h2>粘贴链接（视频/图片/音频/直播）</h2>
+              <p>每行一个链接,最多一次加入30条。公开内容直接下载,登录内容可在设置里启用 cookies。</p>
             </div>
             <button className="ghost-button" type="button">
               粘贴
@@ -227,122 +218,15 @@ function App() {
             </label>
           </div>
           <p className="inline-message">{message}</p>
-        </form>
-
-        <aside className="tips-card">
-          <h2>登录与高清资源</h2>
-          <div className="platform-list">
-            {['YouTube', 'Bilibili', 'Twitter', 'TikTok', 'Instagram', 'Vimeo'].map(
+          <div className="platform-strip">
+            {['YouTube', 'Bilibili', 'Twitter', 'TikTok', 'Instagram', 'Vimeo', 'Reddit', 'Twitch'].map(
               (name) => (
                 <span key={name}>{name}</span>
               ),
             )}
+            <small>以及 yt-dlp 支持的更多平台</small>
           </div>
-          <p>
-            部分高清、会员或私密内容需要 cookies。请确保你已在对应浏览器登录,然后在下方设置中启用浏览器 cookies。
-          </p>
-        </aside>
-      </section>
-
-      <section className="panel settings-panel" aria-label="下载设置">
-        <div className="section-head">
-          <div>
-            <h2>下载设置</h2>
-            <p>保存默认路径、画质、命名模板和 cookies 登录方式。</p>
-          </div>
-          <button type="button" onClick={handleSaveSettings}>保存设置</button>
-        </div>
-
-        <div className="settings-grid">
-          <label>
-            默认画质
-            <select value={preset} onChange={(event) => setPreset(event.target.value)}>
-              {presets.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            命名模板
-            <input
-              value={filenameTemplate}
-              onChange={(event) => setFilenameTemplate(event.target.value)}
-              placeholder="%(title)s.%(ext)s"
-            />
-          </label>
-          <div className="wide-field">
-            <span className="field-title">Cookies 登录方式</span>
-            <div className="cookie-mode-grid" role="group" aria-label="Cookies 登录方式">
-              <button
-                className={cookieMode === 'off' ? 'choice-card active' : 'choice-card'}
-                type="button"
-                onClick={() => setCookieMode('off')}
-              >
-                <strong>不使用</strong>
-                <span>公开内容直接下载</span>
-              </button>
-              <button
-                className={cookieMode === 'browser' ? 'choice-card active' : 'choice-card'}
-                type="button"
-                onClick={() => setCookieMode('browser')}
-              >
-                <strong>读取浏览器</strong>
-                <span>推荐,不保存账号密码</span>
-              </button>
-              <button
-                className={cookieMode === 'file' ? 'choice-card active' : 'choice-card'}
-                type="button"
-                onClick={() => setCookieMode('file')}
-              >
-                <strong>cookies.txt</strong>
-                <span>手动导入文件</span>
-              </button>
-            </div>
-          </div>
-          <div className={cookieMode === 'browser' ? '' : 'is-muted'}>
-            <span className="field-title">浏览器</span>
-            <div className="browser-choice-grid" role="group" aria-label="浏览器选择">
-              {(['chrome', 'edge', 'firefox'] as const).map((browser) => (
-                <button
-                  className={cookieBrowser === browser ? 'browser-pill active' : 'browser-pill'}
-                  disabled={cookieMode !== 'browser'}
-                  key={browser}
-                  type="button"
-                  onClick={() => setCookieBrowser(browser)}
-                >
-                  {browser === 'chrome' ? 'Chrome' : browser === 'edge' ? 'Edge' : 'Firefox'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className="wide-field">
-            cookies.txt 路径
-            <input
-              value={cookieFile}
-              disabled={cookieMode !== 'file'}
-              onChange={(event) => setCookieFile(event.target.value)}
-              placeholder="C:\\path\\to\\cookies.txt"
-            />
-          </label>
-        </div>
-        <div className="cookie-help-card">
-          <strong>如何使用 Cookies 下载高清/私密内容</strong>
-          <ol>
-            <li>先在 Chrome / Edge / Firefox 登录目标网站。</li>
-            <li>选择“读取浏览器”,并选中对应浏览器。</li>
-            <li>保存设置后再加入下载任务。</li>
-          </ol>
-          <p>{cookieHelp}</p>
-          <div className="probe-row">
-            <input
-              value={probeLink}
-              onChange={(event) => setProbeLink(event.target.value)}
-              placeholder="粘贴一个链接测试 cookies 是否有效"
-            />
-            <button type="button" onClick={handleProbe}>测试 cookies</button>
-          </div>
-          {probeResult && <p className="probe-result">{probeResult}</p>}
-        </div>
+        </form>
       </section>
 
       <section className="content-grid">
@@ -400,6 +284,124 @@ function App() {
           </div>
         </div>
       </section>
+      {showSettings && (
+        <div className="settings-overlay" role="presentation" onClick={() => setShowSettings(false)}>
+          <aside
+            aria-label="下载设置"
+            aria-modal="true"
+            className="settings-drawer"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="drawer-head">
+              <div>
+                <h2>下载设置</h2>
+                <p>默认值、命名模板和 cookies 登录方式。</p>
+              </div>
+              <button type="button" onClick={() => setShowSettings(false)}>关闭</button>
+            </div>
+
+            <div className="settings-grid">
+              <label>
+                默认画质
+                <select value={preset} onChange={(event) => setPreset(event.target.value)}>
+                  {presets.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                命名模板
+                <input
+                  value={filenameTemplate}
+                  onChange={(event) => setFilenameTemplate(event.target.value)}
+                  placeholder="%(title)s.%(ext)s"
+                />
+              </label>
+              <div className="wide-field">
+                <span className="field-title">Cookies 登录方式</span>
+                <div className="cookie-mode-grid" role="group" aria-label="Cookies 登录方式">
+                  <button
+                    className={cookieMode === 'off' ? 'choice-card active' : 'choice-card'}
+                    type="button"
+                    onClick={() => setCookieMode('off')}
+                  >
+                    <strong>不使用</strong>
+                    <span>公开内容直接下载</span>
+                  </button>
+                  <button
+                    className={cookieMode === 'browser' ? 'choice-card active' : 'choice-card'}
+                    type="button"
+                    onClick={() => setCookieMode('browser')}
+                  >
+                    <strong>读取浏览器</strong>
+                    <span>推荐,不保存账号密码</span>
+                  </button>
+                  <button
+                    className={cookieMode === 'file' ? 'choice-card active' : 'choice-card'}
+                    type="button"
+                    onClick={() => setCookieMode('file')}
+                  >
+                    <strong>cookies.txt</strong>
+                    <span>手动导入文件</span>
+                  </button>
+                </div>
+              </div>
+              <div className={cookieMode === 'browser' ? '' : 'is-muted'}>
+                <span className="field-title">浏览器</span>
+                <div className="browser-choice-grid" role="group" aria-label="浏览器选择">
+                  {(['chrome', 'edge', 'firefox'] as const).map((browser) => (
+                    <button
+                      className={cookieBrowser === browser ? 'browser-pill active' : 'browser-pill'}
+                      disabled={cookieMode !== 'browser'}
+                      key={browser}
+                      type="button"
+                      onClick={() => setCookieBrowser(browser)}
+                    >
+                      {browser === 'chrome' ? 'Chrome' : browser === 'edge' ? 'Edge' : 'Firefox'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="wide-field">
+                cookies.txt 路径
+                <input
+                  value={cookieFile}
+                  disabled={cookieMode !== 'file'}
+                  onChange={(event) => setCookieFile(event.target.value)}
+                  placeholder="C:\\path\\to\\cookies.txt"
+                />
+              </label>
+            </div>
+            <div className="cookie-help-card">
+              <strong>如何使用 Cookies 下载高清/私密内容</strong>
+              <ol>
+                <li>先在 Chrome / Edge / Firefox 登录目标网站。</li>
+                <li>选择“读取浏览器”,并选中对应浏览器。</li>
+                <li>保存设置后再加入下载任务。</li>
+              </ol>
+              <p>{cookieHelp}</p>
+              <div className="probe-row">
+                <input
+                  value={probeLink}
+                  onChange={(event) => setProbeLink(event.target.value)}
+                  placeholder="粘贴一个链接测试 cookies 是否有效"
+                />
+                <button type="button" onClick={handleProbe}>测试 cookies</button>
+              </div>
+              {probeResult && <p className="probe-result">{probeResult}</p>}
+            </div>
+            <div className="drawer-actions">
+              <button className="secondary-button" type="button" onClick={() => setShowSettings(false)}>
+                取消
+              </button>
+              <button className="primary-button" type="button" onClick={handleSaveSettings}>
+                保存设置
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
     </main>
   )
 }
