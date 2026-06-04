@@ -2,20 +2,30 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core import downloader
+from app.core.queue_manager import QueueManager
+from app.models.task import DownloadTask, TaskStatus
+
+COL_TITLE, COL_FORMAT, COL_STATUS, COL_PROGRESS, COL_SPEED = range(5)
 
 
 def _fmt_size(num: float) -> str:
@@ -26,60 +36,18 @@ def _fmt_size(num: float) -> str:
     return f"{num:.1f} PB"
 
 
-def _fmt_eta(seconds) -> str:
-    if not seconds:
-        return "--:--"
-    seconds = int(seconds)
-    m, s = divmod(seconds, 60)
-    return f"{m:02d}:{s:02d}"
-
-
-class ProbeWorker(QThread):
-    done = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, url: str):
-        super().__init__()
-        self.url = url
-
-    def run(self) -> None:
-        try:
-            info = downloader.extract_info(self.url)
-            self.done.emit(info)
-        except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
-
-
-class DownloadWorker(QThread):
-    progress = Signal(dict)
-    done = Signal()
-    failed = Signal(str)
-
-    def __init__(self, url: str, preset: str, out_dir: str):
-        super().__init__()
-        self.url = url
-        self.preset = preset
-        self.out_dir = out_dir
-
-    def run(self) -> None:
-        try:
-            downloader.download(self.url, self.preset, self.out_dir, self._hook)
-            self.done.emit()
-        except Exception as e:  # noqa: BLE001
-            self.failed.emit(str(e))
-
-    def _hook(self, d: dict) -> None:
-        self.progress.emit(d)
-
-
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("多平台下载器")
-        self.resize(640, 320)
+        self.resize(820, 460)
 
-        self._probe_worker: ProbeWorker | None = None
-        self._dl_worker: DownloadWorker | None = None
+        self.queue = QueueManager(max_concurrent=2)
+        self.queue.task_added.connect(self._on_task_added)
+        self.queue.task_updated.connect(self._on_task_updated)
+        self.queue.task_removed.connect(self._on_task_removed)
+
+        self._row_of: dict[int, int] = {}   # task_id -> 表格行
 
         self._build_ui()
 
@@ -89,25 +57,16 @@ class MainWindow(QWidget):
         # 链接行
         url_row = QHBoxLayout()
         self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("粘贴视频链接...")
-        self.probe_btn = QPushButton("解析")
-        self.probe_btn.clicked.connect(self._on_probe)
-        url_row.addWidget(self.url_edit)
-        url_row.addWidget(self.probe_btn)
-        root.addLayout(url_row)
-
-        # 信息
-        self.info_label = QLabel("尚未解析")
-        self.info_label.setWordWrap(True)
-        root.addWidget(self.info_label)
-
-        # 格式行
-        fmt_row = QHBoxLayout()
-        fmt_row.addWidget(QLabel("格式:"))
+        self.url_edit.setPlaceholderText("粘贴视频链接, 回车或点击加入队列...")
+        self.url_edit.returnPressed.connect(self._on_add)
         self.fmt_combo = QComboBox()
         self.fmt_combo.addItems(list(downloader.PRESETS.keys()))
-        fmt_row.addWidget(self.fmt_combo, 1)
-        root.addLayout(fmt_row)
+        add_btn = QPushButton("加入队列")
+        add_btn.clicked.connect(self._on_add)
+        url_row.addWidget(self.url_edit, 1)
+        url_row.addWidget(self.fmt_combo)
+        url_row.addWidget(add_btn)
+        root.addLayout(url_row)
 
         # 目录行
         dir_row = QHBoxLayout()
@@ -119,102 +78,139 @@ class MainWindow(QWidget):
         dir_row.addWidget(browse_btn)
         root.addLayout(dir_row)
 
-        # 下载按钮
-        self.dl_btn = QPushButton("下载")
-        self.dl_btn.clicked.connect(self._on_download)
-        root.addWidget(self.dl_btn)
+        # 任务表格
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["标题", "格式", "状态", "进度", "速度"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(COL_TITLE, QHeaderView.Stretch)
+        for c in (COL_FORMAT, COL_STATUS, COL_PROGRESS, COL_SPEED):
+            hh.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+        root.addWidget(self.table, 1)
 
-        # 进度
-        self.progress = QProgressBar()
-        self.progress.setValue(0)
-        root.addWidget(self.progress)
-
-        self.status_label = QLabel("就绪")
-        root.addWidget(self.status_label)
-
-        root.addStretch(1)
+        # 控制行
+        ctrl_row = QHBoxLayout()
+        ctrl_row.addWidget(QLabel("同时下载:"))
+        self.conc_spin = QSpinBox()
+        self.conc_spin.setRange(1, 8)
+        self.conc_spin.setValue(2)
+        self.conc_spin.valueChanged.connect(self.queue.set_concurrency)
+        ctrl_row.addWidget(self.conc_spin)
+        ctrl_row.addStretch(1)
+        retry_btn = QPushButton("重试失败")
+        retry_btn.clicked.connect(self._on_retry)
+        remove_btn = QPushButton("移除所选")
+        remove_btn.clicked.connect(self._on_remove)
+        clear_btn = QPushButton("清除已完成")
+        clear_btn.clicked.connect(self.queue.clear_finished)
+        ctrl_row.addWidget(retry_btn)
+        ctrl_row.addWidget(remove_btn)
+        ctrl_row.addWidget(clear_btn)
+        root.addLayout(ctrl_row)
 
     def _default_dir(self) -> str:
         d = os.path.join(os.path.expanduser("~"), "Downloads")
         return d if os.path.isdir(d) else os.getcwd()
 
-    # 解析
-    def _on_probe(self) -> None:
+    # 操作
+    def _on_add(self) -> None:
         url = self.url_edit.text().strip()
         if not url:
-            self.status_label.setText("请输入链接")
             return
-        self.probe_btn.setEnabled(False)
-        self.info_label.setText("解析中...")
-        self._probe_worker = ProbeWorker(url)
-        self._probe_worker.done.connect(self._on_probe_done)
-        self._probe_worker.failed.connect(self._on_probe_failed)
-        self._probe_worker.start()
+        out_dir = self.dir_edit.text().strip() or self._default_dir()
+        os.makedirs(out_dir, exist_ok=True)
+        task = DownloadTask(url=url, preset=self.fmt_combo.currentText(), out_dir=out_dir)
+        self.queue.add(task)
+        self.url_edit.clear()
 
-    def _on_probe_done(self, info: downloader.MediaInfo) -> None:
-        self.probe_btn.setEnabled(True)
-        mins, secs = divmod(info.duration, 60)
-        self.info_label.setText(
-            f"标题: {info.title}\n作者: {info.uploader}    时长: {mins:02d}:{secs:02d}"
-        )
-        self.status_label.setText("解析完成")
-
-    def _on_probe_failed(self, msg: str) -> None:
-        self.probe_btn.setEnabled(True)
-        self.info_label.setText("解析失败")
-        self.status_label.setText(msg)
-
-    # 目录
     def _on_browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "选择保存目录", self.dir_edit.text())
         if d:
             self.dir_edit.setText(d)
 
-    # 下载
-    def _on_download(self) -> None:
-        url = self.url_edit.text().strip()
-        if not url:
-            self.status_label.setText("请输入链接")
+    def _selected_task_id(self) -> int | None:
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        item = self.table.item(row, COL_TITLE)
+        return item.data(Qt.UserRole) if item else None
+
+    def _on_retry(self) -> None:
+        tid = self._selected_task_id()
+        if tid is not None:
+            self.queue.retry(tid)
+
+    def _on_remove(self) -> None:
+        tid = self._selected_task_id()
+        if tid is None:
             return
-        out_dir = self.dir_edit.text().strip() or self._default_dir()
-        os.makedirs(out_dir, exist_ok=True)
-        preset = self.fmt_combo.currentText()
+        task = self.queue.tasks.get(tid)
+        if task and task.status == TaskStatus.DOWNLOADING:
+            QMessageBox.information(self, "提示", "下载中的任务无法移除")
+            return
+        self.queue.remove(tid)
 
-        self.dl_btn.setEnabled(False)
-        self.probe_btn.setEnabled(False)
-        self.progress.setValue(0)
-        self.status_label.setText("开始下载...")
+    # 队列信号
+    def _on_task_added(self, task: DownloadTask) -> None:
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        self._row_of[task.id] = row
 
-        self._dl_worker = DownloadWorker(url, preset, out_dir)
-        self._dl_worker.progress.connect(self._on_progress)
-        self._dl_worker.done.connect(self._on_download_done)
-        self._dl_worker.failed.connect(self._on_download_failed)
-        self._dl_worker.start()
+        title_item = QTableWidgetItem(task.display_title)
+        title_item.setData(Qt.UserRole, task.id)
+        self.table.setItem(row, COL_TITLE, title_item)
+        self.table.setItem(row, COL_FORMAT, QTableWidgetItem(task.preset))
+        self.table.setItem(row, COL_STATUS, QTableWidgetItem(task.status.value))
 
-    def _on_progress(self, d: dict) -> None:
-        status = d.get("status")
-        if status == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-            done = d.get("downloaded_bytes") or 0
-            if total:
-                self.progress.setValue(int(done / total * 100))
-            speed = d.get("speed") or 0
-            eta = d.get("eta")
-            self.status_label.setText(
-                f"下载中  {_fmt_size(done)}/{_fmt_size(total)}  "
-                f"{_fmt_size(speed)}/s  剩余 {_fmt_eta(eta)}"
+        bar = QProgressBar()
+        bar.setValue(0)
+        self.table.setCellWidget(row, COL_PROGRESS, bar)
+        self.table.setItem(row, COL_SPEED, QTableWidgetItem(""))
+
+    def _on_task_updated(self, task: DownloadTask) -> None:
+        row = self._row_of.get(task.id)
+        if row is None:
+            return
+        self.table.item(row, COL_TITLE).setText(task.display_title)
+        status_text = task.status.value
+        if task.status == TaskStatus.FAILED and task.error:
+            status_text = f"失败: {task.error[:40]}"
+        self.table.item(row, COL_STATUS).setText(status_text)
+
+        bar = self.table.cellWidget(row, COL_PROGRESS)
+        if bar:
+            bar.setValue(task.progress)
+
+        speed_text = f"{_fmt_size(task.speed)}/s" if task.speed else ""
+        self.table.item(row, COL_SPEED).setText(speed_text)
+
+    def _on_task_removed(self, task_id: int) -> None:
+        row = self._row_of.pop(task_id, None)
+        if row is None:
+            return
+        self.table.removeRow(row)
+        # 行号变动, 重建映射
+        self._rebuild_row_map()
+
+    def _rebuild_row_map(self) -> None:
+        self._row_of.clear()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, COL_TITLE)
+            if item:
+                self._row_of[item.data(Qt.UserRole)] = row
+
+    def closeEvent(self, event) -> None:
+        if self.queue.has_running():
+            reply = QMessageBox.question(
+                self,
+                "确认退出",
+                "仍有任务正在下载, 确定要退出并取消吗?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
-        elif status == "finished":
-            self.progress.setValue(100)
-            self.status_label.setText("下载完成, 后处理中...")
-
-    def _on_download_done(self) -> None:
-        self.dl_btn.setEnabled(True)
-        self.probe_btn.setEnabled(True)
-        self.progress.setValue(100)
-        self.status_label.setText("全部完成")
-
-    def _on_download_failed(self, msg: str) -> None:
-        self.dl_btn.setEnabled(True)
-        self.probe_btn.setEnabled(True)
-        self.status_label.setText(f"失败: {msg}")
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+        self.queue.shutdown()
+        event.accept()
