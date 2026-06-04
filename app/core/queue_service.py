@@ -7,6 +7,7 @@ from time import time
 from typing import Any
 
 from app.core import downloader
+from app.core.config_store import ConfigStore
 from app.core.history import HistoryStore
 from app.models.task import DownloadTask, TaskStatus
 
@@ -17,7 +18,9 @@ class Cancelled(Exception):
 
 class QueueService:
     def __init__(self, max_concurrent: int = 2):
-        self.max_concurrent = max(1, max_concurrent)
+        self.config_store = ConfigStore()
+        self.config = self.config_store.load()
+        self.max_concurrent = max(1, self.config.concurrency or max_concurrent)
         self.history = HistoryStore()
         self.tasks: dict[int, DownloadTask] = {}
         self._pending: list[int] = []
@@ -28,7 +31,70 @@ class QueueService:
     def presets(self) -> list[str]:
         return list(downloader.PRESETS.keys())
 
-    def add_many(self, urls: list[str], preset: str, out_dir: str) -> list[dict[str, Any]]:
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "presets": self.presets(),
+            "defaultOutDir": self.config.defaultOutDir,
+            "defaultPreset": self.config.defaultPreset,
+            "filenameTemplate": self.config.filenameTemplate,
+            "concurrency": self.config.concurrency,
+            "cookies": {
+                "mode": self.config.cookies.mode,
+                "browser": self.config.cookies.browser,
+                "cookieFile": self.config.cookies.cookieFile,
+            },
+        }
+
+    def save_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        from app.core.config_store import AppConfig, CookiesConfig
+
+        cookies = data.get("cookies") or {}
+        config = AppConfig(
+            defaultOutDir=str(data.get("defaultOutDir") or self.config.defaultOutDir),
+            defaultPreset=str(data.get("defaultPreset") or self.config.defaultPreset),
+            filenameTemplate=str(
+                data.get("filenameTemplate") or self.config.filenameTemplate
+            ),
+            concurrency=max(1, int(data.get("concurrency") or self.config.concurrency)),
+            cookies=CookiesConfig(
+                mode=cookies.get("mode")
+                if cookies.get("mode") in {"off", "browser", "file"}
+                else "off",
+                browser=cookies.get("browser")
+                if cookies.get("browser") in {"chrome", "edge", "firefox"}
+                else "chrome",
+                cookieFile=str(cookies.get("cookieFile") or ""),
+            ),
+        )
+        self.config = self.config_store.save(config)
+        self.max_concurrent = self.config.concurrency
+        return self.get_config()
+
+    def probe(self, url: str) -> dict[str, Any]:
+        info = downloader.extract_info(
+            url,
+            {
+                "mode": self.config.cookies.mode,
+                "browser": self.config.cookies.browser,
+                "cookieFile": self.config.cookies.cookieFile,
+            },
+        )
+        return {
+            "title": info.title,
+            "uploader": info.uploader,
+            "duration": info.duration,
+            "maxHeight": info.max_height,
+            "url": info.webpage_url,
+        }
+
+    def add_many(
+        self,
+        urls: list[str],
+        preset: str | None = None,
+        out_dir: str | None = None,
+    ) -> list[dict[str, Any]]:
+        preset = preset or self.config.defaultPreset
+        out_dir = out_dir or self.config.defaultOutDir
         os.makedirs(out_dir, exist_ok=True)
         added: list[DownloadTask] = []
         with self._lock:
@@ -109,7 +175,18 @@ class QueueService:
     def _run_task(self, task_id: int) -> None:
         task = self.tasks[task_id]
         try:
-            downloader.download(task.url, task.preset, task.out_dir, self._hook(task_id))
+            downloader.download(
+                task.url,
+                task.preset,
+                task.out_dir,
+                self._hook(task_id),
+                self.config.filenameTemplate,
+                {
+                    "mode": self.config.cookies.mode,
+                    "browser": self.config.cookies.browser,
+                    "cookieFile": self.config.cookies.cookieFile,
+                },
+            )
             with self._lock:
                 if task.status != TaskStatus.PAUSED:
                     if task.filepath:

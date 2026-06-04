@@ -63,9 +63,21 @@ class MediaInfo:
     max_height: int
 
 
-def extract_info(url: str) -> MediaInfo:
+def _apply_cookies(opts: dict, cookies: Optional[dict]) -> None:
+    if not cookies:
+        return
+    mode = cookies.get("mode")
+    if mode == "browser":
+        browser = cookies.get("browser") or "chrome"
+        opts["cookiesfrombrowser"] = (browser,)
+    elif mode == "file" and cookies.get("cookieFile"):
+        opts["cookiefile"] = cookies["cookieFile"]
+
+
+def extract_info(url: str, cookies: Optional[dict] = None) -> MediaInfo:
     """解析链接, 返回基本媒体信息 (不下载)。"""
     opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    _apply_cookies(opts, cookies)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return MediaInfo(
@@ -89,11 +101,13 @@ def _build_opts(
     preset: str,
     out_dir: str,
     progress_hook: Optional[Callable[[dict], None]],
+    filename_template: str = "%(title)s.%(ext)s",
+    cookies: Optional[dict] = None,
 ) -> dict:
     fmt, container, audio_only = PRESETS.get(preset, PRESETS[DEFAULT_PRESET])
     opts: dict = {
         "format": fmt,
-        "outtmpl": {"default": "%(title)s.%(ext)s"},
+        "outtmpl": {"default": filename_template or "%(title)s.%(ext)s"},
         "paths": {"home": out_dir},
         "noplaylist": True,
         "quiet": True,
@@ -111,6 +125,8 @@ def _build_opts(
     ff = _ffmpeg_dir()
     if ff:
         opts["ffmpeg_location"] = ff
+
+    _apply_cookies(opts, cookies)
 
     if audio_only:
         opts["postprocessors"] = [
@@ -130,9 +146,11 @@ def download(
     preset: str,
     out_dir: str,
     progress_hook: Optional[Callable[[dict], None]] = None,
+    filename_template: str = "%(title)s.%(ext)s",
+    cookies: Optional[dict] = None,
 ) -> None:
     """同步下载 (建议在后台线程中调用)。"""
-    opts = _build_opts(preset, out_dir, progress_hook)
+    opts = _build_opts(preset, out_dir, progress_hook, filename_template, cookies)
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
 

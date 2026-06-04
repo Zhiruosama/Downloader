@@ -18,6 +18,14 @@ export type Task = {
 export type Config = {
   presets: string[]
   defaultOutDir: string
+  defaultPreset: string
+  filenameTemplate: string
+  concurrency: number
+  cookies: {
+    mode: 'off' | 'browser' | 'file'
+    browser: 'chrome' | 'edge' | 'firefox'
+    cookieFile: string
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -33,6 +41,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getConfig() {
   return request<Config>('/api/config')
+}
+
+export function saveConfig(config: Config) {
+  return request<Config>('/api/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  })
+}
+
+export function probeUrl(url: string) {
+  return request<{
+    title: string
+    uploader: string
+    duration: number
+    maxHeight: number
+    url: string
+  }>('/api/probe', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
 }
 
 export function getTasks() {

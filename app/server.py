@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -11,19 +9,26 @@ from pydantic import BaseModel
 from app.core.queue_service import QueueService
 
 
-def _default_download_dir() -> str:
-    path = Path.home() / "Downloads"
-    return str(path if path.exists() else Path.cwd())
-
-
 class AddTasksRequest(BaseModel):
     urls: list[str]
-    preset: str
+    preset: str | None = None
     out_dir: str | None = None
 
 
 class ConcurrencyRequest(BaseModel):
     value: int
+
+
+class ConfigRequest(BaseModel):
+    defaultOutDir: str
+    defaultPreset: str
+    filenameTemplate: str
+    concurrency: int
+    cookies: dict[str, Any]
+
+
+class ProbeRequest(BaseModel):
+    url: str
 
 
 app = FastAPI(title="Downloader Local API")
@@ -40,10 +45,18 @@ app.add_middleware(
 
 @app.get("/api/config")
 def config() -> dict[str, Any]:
-    return {
-        "presets": queue.presets(),
-        "defaultOutDir": os.getenv("DOWNLOADER_OUT_DIR") or _default_download_dir(),
-    }
+    return queue.get_config()
+
+
+@app.put("/api/config")
+def update_config(payload: ConfigRequest) -> dict[str, Any]:
+    return queue.save_config(payload.model_dump())
+
+
+@app.post("/api/probe")
+def probe(payload: ProbeRequest) -> dict[str, Any]:
+    info = queue.probe(payload.url)
+    return info
 
 
 @app.get("/api/tasks")
@@ -53,8 +66,7 @@ def tasks() -> list[dict[str, Any]]:
 
 @app.post("/api/tasks")
 def add_tasks(payload: AddTasksRequest) -> list[dict[str, Any]]:
-    out_dir = payload.out_dir or _default_download_dir()
-    return queue.add_many(payload.urls, payload.preset, out_dir)
+    return queue.add_many(payload.urls, payload.preset, payload.out_dir)
 
 
 @app.post("/api/tasks/{task_id}/pause")
