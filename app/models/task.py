@@ -29,9 +29,27 @@ class DownloadTask:
     speed: float = 0.0         # bytes/s
     eta: int = 0               # 秒
     error: str = ""
+    filepath: str = ""
+    width: int = 0
+    height: int = 0
+    video_codec: str = ""
+    audio_codec: str = ""
     created_at: float = field(default_factory=time)
     finished_at: float = 0.0
 
     @property
     def display_title(self) -> str:
         return self.title or self.url
+
+    @property
+    def spec_text(self) -> str:
+        parts: list[str] = []
+        if self.width and self.height:
+            parts.append(f"{self.width}x{self.height}")
+        elif self.height:
+            parts.append(f"{self.height}p")
+        if self.video_codec:
+            parts.append(self.video_codec)
+        if self.audio_codec:
+            parts.append(self.audio_codec)
+        return " / ".join(parts)

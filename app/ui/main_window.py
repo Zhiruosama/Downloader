@@ -26,7 +26,7 @@ from app.core import downloader
 from app.core.queue_manager import QueueManager
 from app.models.task import DownloadTask, TaskStatus
 
-COL_TITLE, COL_FORMAT, COL_STATUS, COL_PROGRESS, COL_SPEED = range(5)
+COL_TITLE, COL_FORMAT, COL_SPEC, COL_STATUS, COL_PROGRESS, COL_SPEED = range(6)
 
 
 def _fmt_size(num: float) -> str:
@@ -81,13 +81,13 @@ class MainWindow(QWidget):
         root.addLayout(dir_row)
 
         # 任务表格
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["标题", "格式", "状态", "进度", "速度"])
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["标题", "格式", "实际规格", "状态", "进度", "速度"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(COL_TITLE, QHeaderView.Stretch)
-        for c in (COL_FORMAT, COL_STATUS, COL_PROGRESS, COL_SPEED):
+        for c in (COL_FORMAT, COL_SPEC, COL_STATUS, COL_PROGRESS, COL_SPEED):
             hh.setSectionResizeMode(c, QHeaderView.ResizeToContents)
         root.addWidget(self.table, 1)
 
@@ -116,13 +116,13 @@ class MainWindow(QWidget):
 
         # 历史记录
         root.addWidget(QLabel("历史记录:"))
-        self.history_table = QTableWidget(0, 5)
-        self.history_table.setHorizontalHeaderLabels(["时间", "标题", "格式", "状态", "保存目录"])
+        self.history_table = QTableWidget(0, 6)
+        self.history_table.setHorizontalHeaderLabels(["时间", "标题", "格式", "实际规格", "状态", "文件"])
         self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         hh2 = self.history_table.horizontalHeader()
         hh2.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hh2.setSectionResizeMode(1, QHeaderView.Stretch)
-        for c in (2, 3, 4):
+        for c in (2, 3, 4, 5):
             hh2.setSectionResizeMode(c, QHeaderView.ResizeToContents)
         root.addWidget(self.history_table, 1)
 
@@ -197,6 +197,7 @@ class MainWindow(QWidget):
         title_item.setData(Qt.UserRole, task.id)
         self.table.setItem(row, COL_TITLE, title_item)
         self.table.setItem(row, COL_FORMAT, QTableWidgetItem(task.preset))
+        self.table.setItem(row, COL_SPEC, QTableWidgetItem(task.spec_text))
         self.table.setItem(row, COL_STATUS, QTableWidgetItem(task.status.value))
 
         bar = QProgressBar()
@@ -209,6 +210,7 @@ class MainWindow(QWidget):
         if row is None:
             return
         self.table.item(row, COL_TITLE).setText(task.display_title)
+        self.table.item(row, COL_SPEC).setText(task.spec_text)
         status_text = task.status.value
         if task.status == TaskStatus.FAILED and task.error:
             status_text = f"失败: {task.error[:40]}"
@@ -251,12 +253,14 @@ class MainWindow(QWidget):
                 else ""
             )
             title = item.get("title") or item.get("url") or ""
+            spec = self._spec_from_history(item)
             values = [
                 when,
                 title,
                 item.get("preset") or "",
+                spec,
                 item.get("status") or "",
-                item.get("out_dir") or "",
+                item.get("filepath") or item.get("out_dir") or "",
             ]
             for col, value in enumerate(values):
                 self.history_table.setItem(row, col, QTableWidgetItem(str(value)))
@@ -264,6 +268,20 @@ class MainWindow(QWidget):
     def _on_clear_history(self) -> None:
         self.queue.history.clear()
         self._load_history()
+
+    def _spec_from_history(self, item: dict) -> str:
+        parts: list[str] = []
+        width = int(item.get("width") or 0)
+        height = int(item.get("height") or 0)
+        if width and height:
+            parts.append(f"{width}x{height}")
+        elif height:
+            parts.append(f"{height}p")
+        if item.get("video_codec"):
+            parts.append(str(item["video_codec"]))
+        if item.get("audio_codec"):
+            parts.append(str(item["audio_codec"]))
+        return " / ".join(parts)
 
     def closeEvent(self, event) -> None:
         if self.queue.has_running():

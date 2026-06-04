@@ -166,6 +166,24 @@ class QueueManager(QObject):
         info = d.get("info_dict") or {}
         if info.get("title"):
             task.title = info["title"]
+        filepath = (
+            d.get("filepath")
+            or d.get("filename")
+            or info.get("filepath")
+            or info.get("_filename")
+        )
+        if filepath:
+            task.filepath = filepath
+        width = info.get("width")
+        height = info.get("height")
+        if width:
+            task.width = int(width)
+        if height:
+            task.height = int(height)
+        if info.get("vcodec") and info.get("vcodec") != "none":
+            task.video_codec = info["vcodec"]
+        if info.get("acodec") and info.get("acodec") != "none":
+            task.audio_codec = info["acodec"]
         status = d.get("status")
         if status == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
@@ -185,6 +203,12 @@ class QueueManager(QObject):
 
         task = self.tasks.get(task_id)
         if task:
+            if task.filepath:
+                specs = downloader.probe_media(task.filepath)
+                task.width = int(specs.get("width") or task.width)
+                task.height = int(specs.get("height") or task.height)
+                task.video_codec = str(specs.get("video_codec") or task.video_codec)
+                task.audio_codec = str(specs.get("audio_codec") or task.audio_codec)
             task.status = TaskStatus.DONE
             task.progress = 100
             task.speed = 0.0
